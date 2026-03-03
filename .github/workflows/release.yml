@@ -1,0 +1,60 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build DLL
+        shell: cmd
+        run: |
+          if not exist build mkdir build
+          rc /fo build\OptionsDialog.res src\OptionsDialog.rc
+          cl /LD /EHsc /O2 /MD /utf-8 /std:c++17 ^
+             /I include ^
+             /D "UNICODE" /D "_UNICODE" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_USRDLL" ^
+             src\dllmain.cpp ^
+             src\ZteMifiPlugin.cpp ^
+             src\ZteMifiItem.cpp ^
+             src\HttpClient.cpp ^
+             src\UrlParser.cpp ^
+             src\ConfigManager.cpp ^
+             src\OptionsDialog.cpp ^
+             build\OptionsDialog.res ^
+             /link /DLL /OUT:build\ZteMifiPlugin.dll ^
+             winhttp.lib user32.lib gdi32.lib comdlg32.lib
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename DLL
+        shell: cmd
+        run: |
+          copy build\ZteMifiPlugin.dll build\ZteMifiPlugin_%version%.dll
+        env:
+          version: ${{ steps.version.outputs.version }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ZteMifiPlugin ${{ steps.version.outputs.version }}
+          files: |
+            build/ZteMifiPlugin_${{ steps.version.outputs.version }}.dll
+            ZteMifiPlugin.ini
